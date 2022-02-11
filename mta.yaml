@@ -1,116 +1,98 @@
-_schema-version: '3.2'
+_schema-version: "3.2"
 ID: repapp
 version: 0.0.1
-
+modules:
+- name: repapp-db-deployer
+  type: hdb
+  path: gen/db
+  requires:
+  - name: repapp-uaa
+  - name: repapp-db
+    properties:
+      TARGET_CONTAINER: ~{hdi-service-name}
+  - name: cross-container-service-1
+    group: SERVICE_REPLACEMENTS
+    properties:
+      key: ServiceName_1
+      service: ~{the-service-name}
+  parameters:
+    buildpack: nodejs_buildpack
+    disk-quota: 1024M
+    memory: 256M
+- name: repapp-srv
+  type: nodejs
+  path: gen/srv
+  properties:
+    APIKeyNASA: DEMO_KEY
+  requires:
+  - name: repapp-uaa
+  - name: repapp-dest
+  - name: repapp-db
+  provides:
+  - name: srv-api
+    properties:
+      srv-url: ${default-url}
+  parameters:
+    buildpack: nodejs_buildpack
+    disk-quota: 1024M
+    memory: 512M
+- name: repapp
+  type: approuter.nodejs
+  path: app
+  requires:
+  - name: repapp-uaa
+  - name: srv-api
+    group: destinations
+    properties:
+      forwardAuthToken: true
+      name: srv
+      timeout: 60000
+      url: ~{srv-url}
+  parameters:
+    disk-quota: 1024M
+    memory: 256M
+resources:
+- name: repapp-uaa
+  type: org.cloudfoundry.managed-service
+  parameters:
+    path: ./xs-security.json
+    service: xsuaa
+    service-plan: application
+- name: repapp-dest
+  type: org.cloudfoundry.managed-service
+  parameters:
+    config:
+      init_data:
+        instance:
+          destinations:
+          - Authentication: NoAuthentication
+            Description: NASA APIs
+            HTML5.DynamicDestination: true
+            Name: repapp-NASA-api
+            ProxyType: Internet
+            Type: HTTP
+            URL: https://api.nasa.gov
+          existing_destinations_policy: ignore
+    service: destination
+    service-plan: lite
+- name: repapp-db
+  type: com.sap.xs.hdi-container
+  parameters:
+    service: hana
+    service-plan: hdi-shared
+  properties:
+    hdi-service-name: ${service-name}
+- name: cross-container-service-1
+  type: org.cloudfoundry.existing-service
+  parameters:
+    service-name: repapp-db
+  properties:
+    the-service-name: ${service-name}
 parameters:
   enable-parallel-deployments: true
-
 build-parameters:
   before-all:
-    - builder: custom
-      commands:
-        - npm install --production
-        - npx -p @sap/cds-dk cds build --production
-#        - npx rimraf gen/db/src/gen/data # uncomment this line to prevent loading of initial data which is only relevant for dev/test deployments 
-#        - npx rimraf gen/db/src/gen/csv  # uncomment this line unless db/csv folder has been used for config/control table data which is entirely managed by the developer and never changed by the app
-
-modules:
-  # ---------------- DATABASE DEPLOYER MODULE ------------------
-  - name: repapp-db-deployer
-  # ------------------------------------------------------------
-    type: hdb
-    path: gen/db
-    parameters:
-      buildpack: nodejs_buildpack
-      memory: 256M
-      disk-quota: 1024M
-    requires:
-      - name: repapp-uaa
-      - name: repapp-db
-
-  # --------------------- SERVER MODULE ------------------------
-  - name: repapp-srv
-  # ------------------------------------------------------------
-    type: nodejs
-    path: gen/srv
-    parameters:
-      buildpack: nodejs_buildpack
-      memory: 512M
-      disk-quota: 1024M
-    properties:
-      APIKeyNASA: DEMO_KEY
-    requires:
-      - name: repapp-uaa
-      - name: repapp-dest
-      - name: repapp-db
-    provides:
-      - name: srv-api
-        properties:
-          srv-url: ${default-url}
-
-
-  # ------------------ APP ROUTER MODULE -----------------------
-  - name: repapp
-  # ------------------------------------------------------------
-    type: approuter.nodejs
-    path: app
-    parameters:
-      memory: 256M
-      disk-quota: 1024M
-    requires:
-      - name: repapp-uaa
-      - name: srv-api
-        group: destinations
-        properties:
-          name: srv
-          url: ~{srv-url}
-          timeout: 60000
-          forwardAuthToken: true
-
-
-resources:
-  # ----------------------- UAA SERVICE ------------------------
-  - name: repapp-uaa
-  # ------------------------------------------------------------
-    type: org.cloudfoundry.managed-service
-    parameters:
-      service: xsuaa
-      service-plan: application
-      path: ./xs-security.json
-
-  # -------------------- DESTINATION SERVICE -------------------
-  - name: repapp-dest
-  # ------------------------------------------------------------
-    type: org.cloudfoundry.managed-service
-    parameters:
-      service: destination
-      service-plan: lite
-      config:
-        init_data:
-          instance:
-            existing_destinations_policy: ignore
-            destinations:
-              - Name: repapp-NASA-api
-                Description: NASA APIs
-                URL: https://api.nasa.gov
-                Type: HTTP
-                ProxyType: Internet
-                Authentication: NoAuthentication
-                HTML5.DynamicDestination: true
-
-
-
-  # ------------------- HDI CONTAINER SERVICE ------------------
-  - name: repapp-db
-  # ------------------------------------------------------------
-    type: com.sap.xs.hdi-container
-    parameters:
-      service: hana
-      service-plan: hdi-shared
-    properties:
-      hdi-service-name: ${service-name}
-
-
-
-
-
+  - builder: custom
+    commands:
+    - npm install --production
+    - npx -p @sap/cds-dk cds build --production
